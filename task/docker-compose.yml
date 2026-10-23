@@ -1,0 +1,80 @@
+services:
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: mailercloud-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:9092'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,EXTERNAL://127.0.0.1:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      CLUSTER_ID: '4L622nShTUiBenYhVIZgVA'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  flink-jobmanager:
+    image: flink:1.18.1-java17
+    container_name: mailercloud-flink-jobmanager
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        state.backend: hashmap
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        state.savepoints.dir: file:///tmp/flink-savepoints
+        execution.checkpointing.interval: 5000
+        execution.checkpointing.mode: EXACTLY_ONCE
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 3
+        restart-strategy.fixed-delay.delay: 2 s
+    volumes:
+      - ./docker/flink-lib:/opt/flink/usrlib
+      - ./flink-checkpoints:/tmp/flink-checkpoints
+      - ./docker/flink-jobs:/opt/flink/jobs
+    extra_hosts:
+      - "host.docker.internal:172.22.208.1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  flink-taskmanager:
+    image: flink:1.18.1-java17
+    container_name: mailercloud-flink-taskmanager
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        state.backend: hashmap
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        state.savepoints.dir: file:///tmp/flink-savepoints
+        execution.checkpointing.interval: 5000
+        execution.checkpointing.mode: EXACTLY_ONCE
+    volumes:
+      - ./docker/flink-lib:/opt/flink/usrlib
+      - ./flink-checkpoints:/tmp/flink-checkpoints
+      - ./docker/flink-jobs:/opt/flink/jobs
+    extra_hosts:
+      - "host.docker.internal:172.22.208.1"
+    depends_on:
+      - flink-jobmanager
