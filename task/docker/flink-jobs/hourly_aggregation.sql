@@ -17,7 +17,7 @@ CREATE TABLE submission_events_source (
 ) WITH (
     'connector' = 'kafka',
     'topic' = 'submission-events',
-    'properties.bootstrap.servers' = 'kafka:29092',
+    'properties.bootstrap.servers' = 'kafka:9092',
     'properties.group.id' = 'flink-submission-aggregator-group',
     'scan.startup.mode' = 'earliest-offset',
     'format' = 'json',

@@ -19,7 +19,8 @@ class LoadTestCommand extends Command
                             {--total=100000 : Total requests to send}
                             {--duplicates=20000 : Number of duplicate requests}
                             {--chunk=2000 : Batch size for progress reporting}
-                            {--truncate : Truncate submissions and outbox table before test}';
+                            {--form-id= : Custom form_id (defaults to unique run id)}
+                            {--truncate : Truncate submissions and outbox_events tables before test}';
 
     /**
      * The console command description.
@@ -37,6 +38,8 @@ class LoadTestCommand extends Command
         $duplicateCount = (int) $this->option('duplicates');
         $uniqueCount = $totalRequests - $duplicateCount;
         $chunkSize = (int) $this->option('chunk');
+        $runId = Str::random(6);
+        $formId = $this->option('form-id') ?: 'load-test-' . $runId;
 
         if ($duplicateCount > $totalRequests) {
             $this->error('Duplicate count cannot exceed total requests.');
@@ -49,6 +52,7 @@ class LoadTestCommand extends Command
         $this->info("Total Requests:  " . number_format($totalRequests));
         $this->info("Unique Keys:     " . number_format($uniqueCount));
         $this->info("Duplicate Keys:  " . number_format($duplicateCount));
+        $this->info("Form ID:         {$formId}");
         $this->info("==========================================================");
 
         if ($this->option('truncate')) {
@@ -60,12 +64,10 @@ class LoadTestCommand extends Command
             $this->info('Tables truncated successfully.');
         }
 
-        $startDbCount = Submission::count();
-        $this->info("Initial Submissions in DB: {$startDbCount}");
+        $initialFormCount = Submission::where('form_id', $formId)->count();
+        $this->info("Initial Submissions in DB for {$formId}: {$initialFormCount}");
         $this->info("Generating workload and executing requests...");
 
-        // Generate the 80,000 unique keys
-        // We will repeat keys from this set for the 20,000 duplicates
         $startTime = microtime(true);
 
         $storedCount = 0;
@@ -73,32 +75,31 @@ class LoadTestCommand extends Command
         $errorCount = 0;
 
         $uniqueKeys = [];
-        // Pre-generate unique keys
         for ($i = 0; $i < $uniqueCount; $i++) {
-            $uniqueKeys[] = 'load-key-' . $i . '-' . Str::random(8);
+            $uniqueKeys[] = 'load-' . $runId . '-' . $i . '-' . Str::random(6);
         }
 
-        // Build list of all 100,000 request keys
-        // First, add all 80,000 unique keys
-        $allKeys = $uniqueKeys;
-
-        // Then randomly pick 20,000 keys from the unique set to reuse
+        // Duplicate pool: exactly $duplicateCount items sampled from $uniqueKeys
+        $duplicateKeys = [];
         for ($i = 0; $i < $duplicateCount; $i++) {
-            $duplicateKey = $uniqueKeys[$i % $uniqueCount];
-            $allKeys[] = $duplicateKey;
+            $duplicateKeys[] = $uniqueKeys[$i % $uniqueCount];
         }
 
-        // Shuffle so duplicates are distributed throughout the stream
-        shuffle($allKeys);
+        // Mix: warmup uniques first, then shuffle the rest with duplicates
+        $warmupCount = min(count($uniqueKeys), max(100, (int)($uniqueCount * 0.2)));
+        $firstBatch = array_slice($uniqueKeys, 0, $warmupCount);
+        $remaining = array_merge(array_slice($uniqueKeys, $warmupCount), $duplicateKeys);
+        shuffle($remaining);
+        $allKeys = array_merge($firstBatch, $remaining);
 
         $bar = $this->output->createProgressBar($totalRequests);
         $bar->setFormat(' %current%/%max% [%bar%] %percent:3s%% -- %message%');
-        $bar->setMessage('Running...');
+        $bar->setMessage('Executing...');
         $bar->start();
 
         foreach ($allKeys as $index => $key) {
             $payload = [
-                'form_id' => 'lead-capture-form',
+                'form_id' => $formId,
                 'idempotency_key' => $key,
                 'email' => 'loadtest_' . ($index % 5000) . '@mailercloud.test',
                 'data' => [
@@ -131,8 +132,8 @@ class LoadTestCommand extends Command
         $durationSeconds = max(0.001, $endTime - $startTime);
         $throughput = round($totalRequests / $durationSeconds, 2);
 
-        $finalDbCount = Submission::count();
-        $actualStoredInDb = $finalDbCount - $startDbCount;
+        $finalFormCount = Submission::where('form_id', $formId)->count();
+        $actualStoredInDb = $finalFormCount - $initialFormCount;
 
         $this->info("==========================================================");
         $this->info("               LOAD TEST REPORT RESULTS                   ");
@@ -141,8 +142,8 @@ class LoadTestCommand extends Command
             ['Metric', 'Expected', 'Actual Result', 'Status'],
             [
                 ['Total Requests Sent', number_format($totalRequests), number_format($totalRequests), 'OK'],
-                ['Submissions Stored', number_format($uniqueCount), number_format($actualStoredInDb), $actualStoredInDb === $uniqueCount ? 'PASS' : 'WARN'],
-                ['Duplicates Handled / Returned', number_format($duplicateCount), number_format($duplicateHandledCount), $duplicateHandledCount === $duplicateCount ? 'PASS' : 'WARN'],
+                ['Submissions Stored (201)', number_format($uniqueCount), number_format($actualStoredInDb), $actualStoredInDb === $uniqueCount ? 'PASS' : 'WARN'],
+                ['Duplicates Handled (200)', number_format($duplicateCount), number_format($duplicateHandledCount), $duplicateHandledCount === $duplicateCount ? 'PASS' : 'WARN'],
                 ['Errors Occurred', '0', (string) $errorCount, $errorCount === 0 ? 'PASS' : 'FAIL'],
                 ['Total Time Taken', '-', round($durationSeconds, 2) . ' seconds', 'INFO'],
                 ['Throughput', '-', number_format($throughput, 2) . ' req/sec', 'INFO'],

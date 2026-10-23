@@ -1,0 +1,16 @@
+# Laravel / Backend
+task/vendor/
+task/.env
+task/.phpunit.result.cache
+task/storage/*.key
+task/storage/logs/*.log
+task/flink-checkpoints/
+flink-checkpoints/
+
+# Environment / OS
+.env
+*.log
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc

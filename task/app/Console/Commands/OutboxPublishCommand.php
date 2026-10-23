@@ -17,7 +17,7 @@ class OutboxPublishCommand extends Command
                             {--poll : Run continuously polling for new events}
                             {--interval=1000 : Poll interval in milliseconds when idle}
                             {--topic=submission-events : Kafka topic to publish to}
-                            {--brokers=127.0.0.1:9092 : Kafka bootstrap brokers}';
+                            {--brokers= : Kafka bootstrap brokers}';
 
     /**
      * The console command description.
@@ -35,9 +35,14 @@ class OutboxPublishCommand extends Command
         $poll = (bool) $this->option('poll');
         $interval = (int) $this->option('interval');
         $topic = (string) $this->option('topic');
-        $brokers = (string) $this->option('brokers');
+        $brokers = $this->option('brokers');
 
-        $this->info("Launching Outbox Publisher (Topic: {$topic}, Batch: {$batch})...");
+        if (!$brokers) {
+            $discovered = trim(shell_exec("wsl -u root -d Ubuntu -e bash -c \"DOCKER_HOST=unix:///var/run/docker.sock docker inspect mailercloud-kafka --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null\"") ?: '');
+            $brokers = $discovered ? "{$discovered}:29092" : '172.18.0.2:29092';
+        }
+
+        $this->info("Launching Outbox Publisher (Kafka: {$brokers}, Topic: {$topic}, Batch: {$batch})...");
 
         $scriptPath = base_path('scripts/publish_outbox.py');
         $wslScriptPath = '/mnt/c/' . str_replace('\\', '/', str_replace('C:\\', '', $scriptPath));
