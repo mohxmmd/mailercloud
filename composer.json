@@ -1,0 +1,12 @@
+{
+    "name": "mailercloud/live-coding-task",
+    "description": "Submission API with Real-Time Stream Aggregation",
+    "type": "project",
+    "license": "MIT",
+    "scripts": {
+        "install-all": "cd task && composer install",
+        "test": "cd task && php artisan test",
+        "load-test": "cd task && php artisan submissions:load-test --total=100000 --duplicates=20000 --truncate",
+        "serve": "cd task && php artisan serve --port=8000"
+    }
+}

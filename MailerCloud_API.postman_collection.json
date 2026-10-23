@@ -1,0 +1,273 @@
+{
+  "info": {
+    "_postman_id": "mailercloud-submission-api-v1",
+    "name": "MailerCloud Form Submission & Aggregation API",
+    "description": "Postman Collection for MailerCloud Machine Test API.\nCovers Part 1 (Store submissions, idempotency, pagination) and Part 3 (Live hourly aggregation).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "form_id",
+      "value": "contact-form",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create Valid Submission (201 Created)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"form_id\": \"{{form_id}}\",\n  \"idempotency_key\": \"postman-key-001\",\n  \"email\": \"user@example.com\",\n  \"data\": {\n    \"name\": \"John Doe\",\n    \"subject\": \"Enterprise Plan Demo\",\n    \"message\": \"Hello MailerCloud Team, I would like to schedule a product demo.\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/submissions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "submissions"
+          ]
+        },
+        "description": "Submits a new valid form submission. Returns HTTP 201 Created and persists the record into submissions and outbox_events."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Duplicate Submission (200 OK - Idempotent Reused)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"form_id\": \"{{form_id}}\",\n  \"idempotency_key\": \"postman-key-001\",\n  \"email\": \"user_different@example.com\",\n  \"data\": {\n    \"name\": \"Modified Name\",\n    \"message\": \"Duplicate submission attempt\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/submissions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "submissions"
+          ]
+        },
+        "description": "Sends the same idempotency_key as Request 1. Returns the existing submission record with HTTP 200 OK without inserting a duplicate."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Validation Error - Missing form_id (400 Bad Request)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotency_key\": \"key-missing-form\",\n  \"email\": \"user@example.com\",\n  \"data\": {\n    \"name\": \"Missing Form ID\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/submissions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "submissions"
+          ]
+        },
+        "description": "Validates requirement: return 400 error if form_id is missing."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Validation Error - Invalid Email (400 Bad Request)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"form_id\": \"{{form_id}}\",\n  \"idempotency_key\": \"key-invalid-email\",\n  \"email\": \"not-a-valid-email\",\n  \"data\": {\n    \"name\": \"Invalid Email Test\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/submissions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "submissions"
+          ]
+        },
+        "description": "Validates requirement: return 400 error if email is invalid."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Validation Error - Missing Idempotency Key (400 Bad Request)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"form_id\": \"{{form_id}}\",\n  \"email\": \"valid@example.com\",\n  \"data\": {\n    \"name\": \"No Idempotency Key\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/submissions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "submissions"
+          ]
+        },
+        "description": "Rejects submission when idempotency_key is missing."
+      },
+      "response": []
+    },
+    {
+      "name": "6. List Submissions for Form - Page 1 (200 OK)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/forms/{{form_id}}/submissions?page=1",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "forms",
+            "{{form_id}}",
+            "submissions"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            }
+          ]
+        },
+        "description": "Returns paginated list of submissions for a form (10 items per page) along with pagination metadata."
+      },
+      "response": []
+    },
+    {
+      "name": "7. List Submissions for Form - Page 2 (200 OK)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/forms/{{form_id}}/submissions?page=2",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "forms",
+            "{{form_id}}",
+            "submissions"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "2"
+            }
+          ]
+        },
+        "description": "Returns page 2 of submissions for the specified form."
+      },
+      "response": []
+    },
+    {
+      "name": "8. Get Hourly Aggregates (Live Flink Stream Counts) (200 OK)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/forms/{{form_id}}/aggregates/hourly",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "forms",
+            "{{form_id}}",
+            "aggregates",
+            "hourly"
+          ]
+        },
+        "description": "Part 3 Requirement: Returns live count of submissions broken down per hour computed continuously by Apache Flink."
+      },
+      "response": []
+    }
+  ]
+}
